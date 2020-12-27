@@ -2,11 +2,11 @@
 
 ### 一、Zygote的作用
 
-###### 1、启动SystemServer进程 
-
+###### 1、启动SystemServer进程
+     是zygote fork的第一个进程,其中WindowManagerService，ActivityManagerService等重要的可以binder通信的服务都运行在这个SystemServer进程。而像WindowManagerService，ActivityManagerService这样重要，繁忙的服务，是运行在单独线程中，而有些没有繁重的服务，并没有单独开一个线程，有些服务会注册Receiver。
 ​     SystemServer需要用到一些Zygote准备好的一些系统资源，如常用类、JNI函数、主题资源、共享库。这些资源直接从Zygote继承过来就不用自己重新加载了，提升性能。
 
-###### 2、孵化应用进程
+###### 2、孵化应用进程（apk1进程、apk2进程、等等）
 
 ######      应用相关的进程都是从这个进程中孵化出来的。
 
@@ -122,9 +122,15 @@ Zygote的跨进程未采用Binder机制，而是采用本地的Socket。binder�
 
 ###### 1、孵化应用进程这种事为啥不交给SystemSever来做？而专门设计了Zygote。
 
+​    应用在启动的时候需要做很多准备工作，包括启动虚拟机，加载各类系统资源等等，这些都是非常耗时的，如果能在zygote里就给这些必要的初始化工作做好，子进程在fork的时候就能直接共享，那么这样的话效率就会非常高。
+
+   SystemServer里跑了一堆系统服务，这些是不能继承到应用进程的。而且我们应用进程在启动的时候，内存空间除了必要的资源外，最好是干干净净的，不要继承一堆乱七八糟的东西。所以呢，不如给SystemServer和应用进程里都要用到的资源抽出来单独放在一个进程里，也就是这的zygote进程，然后zygote进程再分别孵化出SystemServer进程和应用进程。孵化出来之后，SystemServer进程和应用进程就可以各干各的事了。
+
 ###### 2、Zygote的IPC机制为啥不采用Binder，如果采用Binder 会有什么问题？
 
+   采用Binder机制，首先zygote要启用binder机制，需要打开binder驱动，获得一个描述符，再通过mmap进行内存映射，还要注册binder线程，这还不够，还要创建一个binder对象注册到serviceManager，另外AMS要向zygote发起创建应用进程请求的话，要先从serviceManager查询zygote的binder对象，然后再发起binder调用，这来来回回好几趟非常繁琐。相比之下，zygote和SystemServer进程本来就是父子关系，对于简单的消息通信，用管道或者socket非常方便省事。
 
+ 
 
 ### 四、小结
 
